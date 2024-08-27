@@ -1,4 +1,5 @@
 from fastapi import FastAPI, status, HTTPException
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from database import SessionLocal, engine
 import models
@@ -147,3 +148,12 @@ def fetch_and_store():
 
     return {"message": "Data successfuly stored in the database"}
 
+
+@app.patch("/update/{pokemon_id}", response_model=Pokemon)
+def update_Pokemon_Patch(pokemon_id: str, pokemon: Pokemon):
+    find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
+    if not find_pokemon:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"pokemon with id {pokemon_id} doesn't exist...")
+    for key, value in pokemon.dict(exclude_unset=True).items():
+        setattr(find_pokemon, key, value)
+    return find_pokemon
