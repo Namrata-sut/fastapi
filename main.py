@@ -34,10 +34,9 @@ def getInfo():
 @app.get('/', response_model=list[Pokemon], status_code=status.HTTP_200_OK)
 def get_all_pokemon():
     getAllPokemon = db.query(models.PokemonData).all()
-
-    for pokemon in getAllPokemon:
-        if pokemon.type_2 is None:
-            pokemon.type_2 = ""
+    # for pokemon in getAllPokemon:
+    #     if pokemon.type_2 is None:
+    #         pokemon.type_2 = ""
     return getAllPokemon
 
 
