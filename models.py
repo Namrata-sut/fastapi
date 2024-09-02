@@ -7,7 +7,7 @@ def create_tables():
 
 
 class PokemonData(Base):
-    __tablename__ = "pokemon_info"
+    __tablename__ = "pokemon_data"
     id = Column(Integer, primary_key=True)
     name = Column(String(40))
     type_1 = Column(String(40))

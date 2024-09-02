@@ -1,9 +1,10 @@
 from fastapi import FastAPI, status, HTTPException
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from database import SessionLocal, engine
 import models
 import requests
+from typing import Optional
 
 app = FastAPI()
 db = SessionLocal()
@@ -11,17 +12,17 @@ db = SessionLocal()
 
 class Pokemon(BaseModel):
     id: int
-    name: str
+    name: str = Field(min_length=2, max_length=30)
     type_1: str
-    type_2: str
+    type_2: Optional[str] = None
     total: int
     hp: int
     attack: int
     defense: int
     sp_atk: int
     sp_def: int
-    speed: int
-    generation: int
+    speed: int = Field(lt=200, gt=4)
+    generation: int = Field(lt=7, gt=0, default=2)
     legendary: bool
 
 
@@ -38,6 +39,15 @@ def get_all_pokemon():
         if pokemon.type_2 is None:
             pokemon.type_2 = ""
     return getAllPokemon
+
+
+@app.get('/getById/{pokemon_id}', response_model=Pokemon, status_code=status.HTTP_200_OK)
+def get_Pokemon_By_Id(pokemon_id: int):
+    getSinglePokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
+    if getSinglePokemon is not None:
+        return getSinglePokemon
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found..")
 
 
 @app.post('/addPokemon', response_model=Pokemon, status_code=status.HTTP_201_CREATED)
@@ -89,6 +99,16 @@ def update_Pokemon(pokemon_id: int, pokemon: Pokemon):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon with this id is not exist..")
 
 
+@app.patch("/update/{pokemon_id}", response_model=Pokemon)
+def update_Pokemon_Patch(pokemon_id: str, pokemon: Pokemon):
+    find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
+    if not find_pokemon:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"pokemon with id {pokemon_id} doesn't exist...")
+    for key, value in pokemon.dict(exclude_unset=True).items():
+        setattr(find_pokemon, key, value)
+    return find_pokemon
+
+
 @app.delete('/deletePokemon/{pokemon_id}', response_model=Pokemon, status_code=200)
 def delete_Pokemon(pokemon_id):
     find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
@@ -99,15 +119,6 @@ def delete_Pokemon(pokemon_id):
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Pokemon with this id is either alreday deleted or not found..")
-
-
-@app.get('/getById/{pokemon_id}', response_model=Pokemon, status_code=status.HTTP_200_OK)
-def get_Pokemon_By_Id(pokemon_id: int):
-    getSinglePokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
-    if getSinglePokemon is not None:
-        return getSinglePokemon
-    else:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found..")
 
 
 @app.post("/fetch-and-store/")
@@ -148,12 +159,3 @@ def fetch_and_store():
 
     return {"message": "Data successfuly stored in the database"}
 
-
-@app.patch("/update/{pokemon_id}", response_model=Pokemon)
-def update_Pokemon_Patch(pokemon_id: str, pokemon: Pokemon):
-    find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
-    if not find_pokemon:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"pokemon with id {pokemon_id} doesn't exist...")
-    for key, value in pokemon.dict(exclude_unset=True).items():
-        setattr(find_pokemon, key, value)
-    return find_pokemon
