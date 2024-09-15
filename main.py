@@ -1,6 +1,6 @@
-from fastapi import FastAPI, status, HTTPException
-from fastapi.encoders import jsonable_encoder
+from fastapi import FastAPI, status, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import asc, desc
 from database import SessionLocal, engine
 import models
 import requests
@@ -26,7 +26,7 @@ class Pokemon(BaseModel):
     legendary: bool
 
 
-@app.get("/gett", status_code=200)
+@app.get("/test", status_code=200)
 def getInfo():
     return {"message": "Server is running"}
 
@@ -40,7 +40,7 @@ def get_all_pokemon():
     return getAllPokemon
 
 
-@app.get('/getById/{pokemon_id}', response_model=Pokemon, status_code=status.HTTP_200_OK)
+@app.get('/pokemon/{pokemon_id}', response_model=Pokemon, status_code=status.HTTP_200_OK)
 def get_Pokemon_By_Id(pokemon_id: int):
     getSinglePokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if getSinglePokemon is not None:
@@ -49,7 +49,7 @@ def get_Pokemon_By_Id(pokemon_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found..")
 
 
-@app.post('/addPokemon', response_model=Pokemon, status_code=status.HTTP_201_CREATED)
+@app.post('/pokemon', response_model=Pokemon, status_code=status.HTTP_201_CREATED)
 def add_Pokemon(pokemon: Pokemon):
     newPokemon = models.PokemonData(
         id=pokemon.id,
@@ -68,14 +68,15 @@ def add_Pokemon(pokemon: Pokemon):
     )
     find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon.id).first()
     if find_pokemon is not None:
-        raise HTTPException(status_code=status.HTTP_406_NOT_ACCEPTABLE, detail="Pokemon with this id is already exist..")
+        raise HTTPException(status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                            detail="Pokemon with this id is already exist..")
     else:
         db.add(newPokemon)
         db.commit()
         return newPokemon
 
 
-@app.put('/updatePokemon/{pokemon_id}', response_model=Pokemon, status_code=status.HTTP_202_ACCEPTED)
+@app.put('/pokemon/{pokemon_id}', response_model=Pokemon, status_code=status.HTTP_202_ACCEPTED)
 def update_Pokemon(pokemon_id: int, pokemon: Pokemon):
     find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if find_pokemon is not None:
@@ -98,17 +99,18 @@ def update_Pokemon(pokemon_id: int, pokemon: Pokemon):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon with this id is not exist..")
 
 
-@app.patch("/update/{pokemon_id}", response_model=Pokemon)
+@app.patch("/pokemon/{pokemon_id}", response_model=Pokemon)
 def update_Pokemon_Patch(pokemon_id: str, pokemon: Pokemon):
     find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not find_pokemon:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"pokemon with id {pokemon_id} doesn't exist...")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"pokemon with id {pokemon_id} doesn't exist...")
     for key, value in pokemon.dict(exclude_unset=True).items():
         setattr(find_pokemon, key, value)
     return find_pokemon
 
 
-@app.delete('/deletePokemon/{pokemon_id}', response_model=Pokemon, status_code=200)
+@app.delete('/pokemon/{pokemon_id}', response_model=Pokemon, status_code=200)
 def delete_Pokemon(pokemon_id):
     find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if find_pokemon is not None:
@@ -120,36 +122,46 @@ def delete_Pokemon(pokemon_id):
                             detail="Pokemon with this id is either alreday deleted or not found..")
 
 
-@app.post("/fetch-and-store/")
+@app.post("/pokemon/fetch_and_store/")
 def fetch_and_store():
     response = requests.get('https://coralvanda.github.io/pokemon_data.json')
     data = response.json()
     print(f"{data}- data fetched")
 
-    for i in range(len(data)):
-        for j in range(i + 1, len(data)):
-            while data[i]["#"] == data[j]["#"]:
-                data[j]["#"] += 1
-    try:
-        for pokemon in data:
-            db_pokemon = models.PokemonData(
-                id=pokemon['#'],
-                name=pokemon['Name'],
-                type_1=pokemon['Type 1'],
-                type_2=pokemon.get('Type 2'),
-                total=pokemon['Total'],
-                hp=pokemon['HP'],
-                attack=pokemon['Attack'],
-                defense=pokemon['Defense'],
-                sp_atk=pokemon['Sp. Atk'],
-                sp_def=pokemon['Sp. Def'],
-                speed=pokemon['Speed'],
-                generation=pokemon['Generation'],
-                legendary=pokemon['Legendary']
-            )
+    # Adjust Pokémon IDs to ensure unique
+    ids = set()
+    for pokemon in data:
+        current_id = pokemon["#"]
+        while current_id in ids:
+            current_id += 1
+        pokemon["#"] = current_id
+        ids.add(current_id)
 
-            db.add(db_pokemon)
+    # To match the database model's column names
+    pokemon_data = [
+        {
+            "id": pokemon["#"],
+            "name": pokemon["Name"],
+            "type_1": pokemon["Type 1"],
+            "type_2": pokemon.get("Type 2"),
+            "total": pokemon["Total"],
+            "hp": pokemon["HP"],
+            "attack": pokemon["Attack"],
+            "defense": pokemon["Defense"],
+            "sp_atk": pokemon["Sp. Atk"],
+            "sp_def": pokemon["Sp. Def"],
+            "speed": pokemon["Speed"],
+            "generation": pokemon["Generation"],
+            "legendary": pokemon["Legendary"]
+        }
+        for pokemon in data
+    ]
+
+    try:
+        # Perform bulk insert using bulk_insert_mappings
+        db.bulk_insert_mappings(models.PokemonData, pokemon_data)
         db.commit()
+        print("Data inserted successfully..")
     except Exception as e:
         db.rollback()
         return {"error": str(e)}
@@ -158,3 +170,31 @@ def fetch_and_store():
 
     return {"message": "Data successfuly stored in the database"}
 
+
+@app.get("/pokemon/")
+def get_pokemon(sort: str = Query("asc", description="Sort order: 'asc' or 'desc'"),
+                keyword: str = Query(None, description="Search keyword"),
+                col: str = Query("name", description="Column to search in, default 'name'"),
+                limit: int = Query(10, description="Results per page, default 10", le=100),
+                page: int = Query(1, description="Page number")):
+    # Verify column exists
+    if not hasattr(models.PokemonData, col):
+        raise HTTPException(status_code=400, detail=f"Column '{col}' does not exist.")
+
+    query = db.query(models.PokemonData)
+
+    # search by keyword
+    if keyword:
+        query = query.filter(getattr(models.PokemonData, col).ilike(f"%{keyword}%"))
+
+    # sorting
+    if sort == "asc":
+        query = query.order_by(asc(models.PokemonData.id))
+    else:
+        query = query.order_by(desc(models.PokemonData.id))
+
+    # Pagination
+    offset = (page - 1) * limit
+    paginated_data = query.offset(offset).limit(limit).all()
+
+    return paginated_data
