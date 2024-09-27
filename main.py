@@ -108,14 +108,18 @@ def update_Pokemon_Patch(pokemon_id: str, pokemon: Pokemon):
 
 @app.delete('/pokemon/{pokemon_id}', response_model=Pokemon, status_code=200)
 def delete_Pokemon(pokemon_id):
+    if not pokemon_id.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Pokemon ID must be a valid integer."
+        )
+
     find_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if find_pokemon is not None:
         db.delete(find_pokemon)
         db.commit()
         raise HTTPException(status_code=status.HTTP_200_OK, detail="Pokemon with this id is deleted successfully..")
     else:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Pokemon with this id is either alreday deleted or not found..")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon with this id is either alreday deleted or not found..")
 
 
 @app.post("/pokemon/fetch_and_store/")
