@@ -7,8 +7,9 @@ def create_tables():
 
 
 class PokemonData(Base):
-    __tablename__ = "pokemon_data"
-    id = Column(Integer, primary_key=True)
+    __tablename__ = "pokemon_data_test_3"
+    # id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    id = Column(Integer, primary_key=True, server_default=text("nextval('pokemon_data_id_seq'::regclass)"), index=True)
     name = Column(String(40))
     type_1 = Column(String(40))
     type_2 = Column(String(40))
