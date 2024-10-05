@@ -3,3 +3,5 @@ __pycache__/
 *.v
 *.iml
 .pytest_cache/
+
+.idea/
