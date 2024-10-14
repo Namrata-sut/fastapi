@@ -5,7 +5,7 @@ from typing import Optional, List
 # Base schema for Pydantic models
 class OurBaseModel(BaseModel):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # Input Schemas
@@ -54,6 +54,10 @@ class PokemonGetOutputSchema(BaseModel):
     speed: int
     generation: int
     legendary: bool
+
+
+class DeleteResponse(BaseModel):
+    message: str
 
 
 class PokemonGetAllOutputSchema(List[PokemonGetOutputSchema]):
