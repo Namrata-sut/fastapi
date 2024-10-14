@@ -1,9 +1,11 @@
-from typing import Optional, List
+from typing import Optional, List, Annotated
 from fastapi import FastAPI, status, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 import requests
 from sqlalchemy import asc, desc, func, inspect, Integer, Boolean, String
 from sqlalchemy.orm import Session
+import auth
+from auth import get_current_user
 from database import get_db
 import models
 from schema import (
@@ -15,6 +17,8 @@ from schema import (
 )
 
 app = FastAPI()
+app.include_router(auth.router)
+user_depency = Annotated[dict, Depends(get_current_user)]
 
 
 class Pokemon(BaseModel):
@@ -34,7 +38,7 @@ class Pokemon(BaseModel):
 
 
 @app.get("/test", status_code=200)
-def get_info():
+def get_info(user: user_depency):
     return {"message": "Server is running"}
 
 
@@ -43,7 +47,7 @@ def get_info():
     response_model=PokemonGetOutputSchema,
     status_code=status.HTTP_200_OK,
 )
-def get_pokemon_by_id(pokemon_id: int, db: Session = Depends(get_db)):
+def get_pokemon_by_id(pokemon_id: int, user: user_depency, db: Session = Depends(get_db)):
     pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not pokemon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found.")
@@ -55,7 +59,7 @@ def get_pokemon_by_id(pokemon_id: int, db: Session = Depends(get_db)):
     response_model=PokemonPostPatchPutOutputSchema,
     status_code=status.HTTP_201_CREATED,
 )
-def add_pokemon(pokemon: PokemonPostPutInputSchema, db: Session = Depends(get_db)):
+def add_pokemon(pokemon: PokemonPostPutInputSchema, user: user_depency, db: Session = Depends(get_db)):
     new_pokemon = models.PokemonData(**pokemon.dict())
     db.add(new_pokemon)
     db.commit()
@@ -67,7 +71,7 @@ def add_pokemon(pokemon: PokemonPostPutInputSchema, db: Session = Depends(get_db
     response_model=PokemonPostPatchPutOutputSchema,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def update_pokemon(pokemon_id: int, pokemon: PokemonPostPutInputSchema, db: Session = Depends(get_db)):
+def update_pokemon(pokemon_id: int, pokemon: PokemonPostPutInputSchema, user: user_depency, db: Session = Depends(get_db)):
     existing_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not existing_pokemon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found.")
@@ -81,7 +85,7 @@ def update_pokemon(pokemon_id: int, pokemon: PokemonPostPutInputSchema, db: Sess
 
 
 @app.patch("/pokemon/{pokemon_id}", response_model=PokemonPostPatchPutOutputSchema)
-def update_pokemon_patch(pokemon_id: int, pokemon: PokemonPatchInputSchema, db: Session = Depends(get_db)):
+def update_pokemon_patch(pokemon_id: int, pokemon: PokemonPatchInputSchema, user: user_depency, db: Session = Depends(get_db)):
     existing_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not existing_pokemon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -96,7 +100,7 @@ def update_pokemon_patch(pokemon_id: int, pokemon: PokemonPatchInputSchema, db: 
 
 
 @app.delete("/pokemon/{pokemon_id}", response_model=DeleteResponse, status_code=200)
-def delete_pokemon(pokemon_id: int, db: Session = Depends(get_db)):
+def delete_pokemon(pokemon_id: int, user: user_depency, db: Session = Depends(get_db)):
     if not isinstance(pokemon_id, int):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -113,7 +117,7 @@ def delete_pokemon(pokemon_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/pokemon/fetch_and_store/")
-def fetch_and_store(db: Session = Depends(get_db)):
+def fetch_and_store(user: user_depency, db: Session = Depends(get_db)):
     response = requests.get("https://coralvanda.github.io/pokemon_data.json")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch data.")
@@ -155,6 +159,7 @@ def fetch_and_store(db: Session = Depends(get_db)):
     status_code=status.HTTP_200_OK,
 )
 def get_pokemon(
+        user: user_depency,
         sort: str = Query("asc", description="Sort order: 'asc' or 'desc'"),
         keyword: Optional[str] = Query(None, description="Search keyword"),
         col: str = Query("name", description="Column to search in, default 'name'"),

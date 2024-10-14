@@ -27,3 +27,12 @@ class PokemonData(Base):
     speed = Column(Integer, nullable=False)
     generation = Column(Integer, nullable=False)
     legendary = Column(Boolean(), nullable=False)
+
+
+class Users(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True,)
+    username = Column(String(40), nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default='user', nullable=False)
+
