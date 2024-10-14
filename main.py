@@ -5,7 +5,7 @@ import requests
 from sqlalchemy import asc, desc, func, inspect, Integer, Boolean, String
 from sqlalchemy.orm import Session
 import auth
-from auth import get_current_user
+from auth import get_current_user, RoleChecker
 from database import get_db
 import models
 from schema import (
@@ -15,30 +15,19 @@ from schema import (
     PokemonPostPatchPutOutputSchema,
     DeleteResponse,
 )
+from models import UserRole
 
 app = FastAPI()
 app.include_router(auth.router)
-user_depency = Annotated[dict, Depends(get_current_user)]
+user_dependency = Annotated[dict, Depends(get_current_user)]
 
-
-class Pokemon(BaseModel):
-    id: int
-    name: str = Field(min_length=2, max_length=30)
-    type_1: str
-    type_2: Optional[str] = None
-    total: int
-    hp: int
-    attack: int
-    defense: int
-    sp_atk: int
-    sp_def: int
-    speed: int = Field(lt=200, gt=4)
-    generation: int = Field(lt=7, gt=0, default=2)
-    legendary: bool
-
+# Define role-based access control
+admin_only = RoleChecker([UserRole.admin])
+admin_or_moderator = RoleChecker([UserRole.admin, UserRole.moderator])
+all_users = RoleChecker([UserRole.admin, UserRole.moderator, UserRole.user])
 
 @app.get("/test", status_code=200)
-def get_info(user: user_depency):
+def get_info(user: user_dependency):
     return {"message": "Server is running"}
 
 
@@ -46,8 +35,9 @@ def get_info(user: user_depency):
     "/pokemon/{pokemon_id}",
     response_model=PokemonGetOutputSchema,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(all_users)]
 )
-def get_pokemon_by_id(pokemon_id: int, user: user_depency, db: Session = Depends(get_db)):
+def get_pokemon_by_id(pokemon_id: int, user: user_dependency, db: Session = Depends(get_db)):
     pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not pokemon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found.")
@@ -58,8 +48,9 @@ def get_pokemon_by_id(pokemon_id: int, user: user_depency, db: Session = Depends
     "/pokemon",
     response_model=PokemonPostPatchPutOutputSchema,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(admin_only)]
 )
-def add_pokemon(pokemon: PokemonPostPutInputSchema, user: user_depency, db: Session = Depends(get_db)):
+def add_pokemon(pokemon: PokemonPostPutInputSchema, user: user_dependency, db: Session = Depends(get_db)):
     new_pokemon = models.PokemonData(**pokemon.dict())
     db.add(new_pokemon)
     db.commit()
@@ -70,8 +61,9 @@ def add_pokemon(pokemon: PokemonPostPutInputSchema, user: user_depency, db: Sess
     "/pokemon/{pokemon_id}",
     response_model=PokemonPostPatchPutOutputSchema,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(admin_or_moderator)]
 )
-def update_pokemon(pokemon_id: int, pokemon: PokemonPostPutInputSchema, user: user_depency, db: Session = Depends(get_db)):
+def update_pokemon(pokemon_id: int, pokemon: PokemonPostPutInputSchema, user: user_dependency, db: Session = Depends(get_db)):
     existing_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not existing_pokemon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pokemon not found.")
@@ -83,9 +75,12 @@ def update_pokemon(pokemon_id: int, pokemon: PokemonPostPutInputSchema, user: us
     db.refresh(existing_pokemon)
     return existing_pokemon
 
-
-@app.patch("/pokemon/{pokemon_id}", response_model=PokemonPostPatchPutOutputSchema)
-def update_pokemon_patch(pokemon_id: int, pokemon: PokemonPatchInputSchema, user: user_depency, db: Session = Depends(get_db)):
+@app.patch(
+    "/pokemon/{pokemon_id}",
+    response_model=PokemonPostPatchPutOutputSchema,
+    dependencies=[Depends(admin_or_moderator)]
+)
+def update_pokemon_patch(pokemon_id: int, pokemon: PokemonPatchInputSchema, user: user_dependency, db: Session = Depends(get_db)):
     existing_pokemon = db.query(models.PokemonData).filter(models.PokemonData.id == pokemon_id).first()
     if not existing_pokemon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -99,8 +94,8 @@ def update_pokemon_patch(pokemon_id: int, pokemon: PokemonPatchInputSchema, user
     return existing_pokemon
 
 
-@app.delete("/pokemon/{pokemon_id}", response_model=DeleteResponse, status_code=200)
-def delete_pokemon(pokemon_id: int, user: user_depency, db: Session = Depends(get_db)):
+@app.delete( "/pokemon/{pokemon_id}", response_model=DeleteResponse, status_code=200, dependencies=[Depends(admin_only)])
+def delete_pokemon(pokemon_id: int, user: user_dependency, db: Session = Depends(get_db)):
     if not isinstance(pokemon_id, int):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -116,8 +111,8 @@ def delete_pokemon(pokemon_id: int, user: user_depency, db: Session = Depends(ge
     return {"message": "Pokemon deleted successfully."}
 
 
-@app.post("/pokemon/fetch_and_store/")
-def fetch_and_store(user: user_depency, db: Session = Depends(get_db)):
+@app.post("/pokemon/fetch_and_store/", dependencies=[Depends(admin_only)])
+def fetch_and_store(user: user_dependency, db: Session = Depends(get_db)):
     response = requests.get("https://coralvanda.github.io/pokemon_data.json")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch data.")
@@ -157,9 +152,10 @@ def fetch_and_store(user: user_depency, db: Session = Depends(get_db)):
     "/pokemon/",
     response_model=List[PokemonGetOutputSchema],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(all_users)]
 )
 def get_pokemon(
-        user: user_depency,
+        user: user_dependency,
         sort: str = Query("asc", description="Sort order: 'asc' or 'desc'"),
         keyword: Optional[str] = Query(None, description="Search keyword"),
         col: str = Query("name", description="Column to search in, default 'name'"),
