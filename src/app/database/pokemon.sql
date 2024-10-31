@@ -1,21 +1,25 @@
 -- pokemon_database_creation
 CREATE DATABASE Pokemon;
 
+-- pokemon_database_seq_creation.sql
+CREATE SEQUENCE pokemon_data_id_seq;
+
 -- pokemon_table_creation.sql
 CREATE TABLE pokemon_data_test_3 (
-    id INTEGER PRIMARY KEY DEFAULT nextval('pokemon_data_id_seq'::regclass),
-    name VARCHAR(40),
-    type_1 VARCHAR(40),
+--    id INTEGER PRIMARY KEY DEFAULT nextval('pokemon_data_id_seq'::regclass),
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(40) NOT NULL,
+    type_1 VARCHAR(40) NOT NULL,
     type_2 VARCHAR(40),
-    total INTEGER,
-    hp INTEGER,
-    attack INTEGER,
-    defense INTEGER,
-    sp_atk INTEGER,
-    sp_def INTEGER,
-    speed INTEGER,
-    generation INTEGER,
-    legendary BOOLEAN
+    total INTEGER NOT NULL,
+    hp INTEGER NOT NULL,
+    attack INTEGER NOT NULL,
+    defense INTEGER NOT NULL,
+    sp_atk INTEGER NOT NULL,
+    sp_def INTEGER NOT NULL,
+    speed INTEGER NOT NULL,
+    generation INTEGER NOT NULL,
+    legendary BOOLEAN NOT NULL
 );
 
 -- pokemon_table_insert.sql
