@@ -1,56 +1,50 @@
-import os
-from faker import Faker
+import pytest
+from starlette.testclient import TestClient
 
-from app.factories.user_factory import UserFactory
-from app.models.models import UserRole
-from app.tests.conftest import get_auth_token
-
-faker = Faker()
-os.environ["SECRET_KEY"] = "ahgpreghe948yp8934yhp9dhye4fw309039ug8rg"
+from app.tests.conftest import test_db
 
 
-def test_create_user(client, create_user, user_data):
-    # Use the create_user fixture from conftest.py
-    username, password, role = user_data
-    create_user_request = {
-        "username": username,
-        "password": password,
-        "role": role,
-    }
+class TestAuthRoutes:
+    @pytest.fixture(autouse=True)
+    def setup(self, client: TestClient, test_db, admin_data):
+        self.client = client
+        self.db = test_db
+        self.admin_data = admin_data
+        # self.token = get_auth_token
+        # print(self.token)
 
-    response = client.post("/auth/user", json=create_user_request)
-    assert response.status_code == 201
+    def test_create_user(self):
+        # Test creating a new user
+        response = self.client.post("/auth/user", json=self.admin_data)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["username"] == self.admin_data["username"]
+        assert data["role"] == self.admin_data["role"]
+        assert "id" in data
 
-    response_data = response.json()
-    assert response_data["username"] == username
-    assert response_data["role"] == role
+    def test_login_user(self, create_user):
+        # Test user login after creation
+        login_data = {
+            "username": self.admin_data["username"],
+            "password": self.admin_data["password"]
+        }
+        response = self.client.post("/auth/token", data=login_data)
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+        assert data["role"] == self.admin_data["role"]
 
+    def test_login_invalid_user(self):
+        # Test invalid user login
+        invalid_login_data = {
+            "username": "invaliduser",
+            "password": "invalidpassword"
+        }
+        response = self.client.post("/auth/token", data=invalid_login_data)
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Could not validate users"}
 
-def test_user_login(client, get_auth_token, user_data):
-    plain_password = "test_"
-    username, password, role = user_data
-    # create_user_request = {
-    #     "username": username,
-    #     "password": password,
-    #     "role": role,
-    # }
-    # user_data = create_user(username=faker.unique.user_name(), plain_password=plain_password, role=UserRole.user)
-    # print(f"User created: {user_data.username}, Plain password: {plain_password}, Hashed password: {user_data.hashed_password}")
-    auth_token = get_auth_token(username, plain_password, role)
-
-    print(auth_token)
-    response = client.post("/auth/token", data={
-        "username": username,
-        "password": plain_password
-    })
-
-    print(f"Response status code: {response.status_code}")
-    print(f"Response content: {response.json()}")
-
-    assert response.status_code == 200
-    token_data = response.json()
-    assert token_data["access_token"] is not None
-    assert token_data["role"] == user_data.role
-
-
-
+    def test_get_auth_token(self, client, get_auth_token):
+        # Ensure token is not None
+        assert get_auth_token is not None, "Access token should not be None"
